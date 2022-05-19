@@ -1,2 +1,2 @@
 # mv-ordered-kv
-Multi-Version Ordered KV
+Multi-Versioning Ordered Key-Value Stores with Persistent Memory Support
