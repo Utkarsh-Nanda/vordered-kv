@@ -13,7 +13,7 @@ template <class T, size_t N> class key_chain_t {
     struct link_t {
         typedef pmem::obj::persistent_ptr<link_t> ptr_t;
         pmem::obj::array<T, N> block;
-        pmem::obj::persistent_ptr<link_t> next = NULL;
+        ptr_t next = NULL;
     };
     typedef typename link_t::ptr_t plink_t;
 

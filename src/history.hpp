@@ -20,9 +20,9 @@ template <class V> class history_opt_t {
 public:
     inline static const int marker = std::numeric_limits<V>::min();
 
-    void insert(int t, const V &v, bool persist = true) {
+    void insert(int t, const V &v) {
         int slot = pending++;
-        while (slot == HISTORY_SIZE)
+        if (slot == HISTORY_SIZE)
             throw std::runtime_error("history full, reallocation not implemented yet");
         history[slot].ts = t;
         history[slot].val = v;

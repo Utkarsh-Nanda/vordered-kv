@@ -2,6 +2,7 @@
 #define __PERSISTENT_HISTORY_T
 
 #include <libpmemobj++/pool.hpp>
+#include <libpmemobj++/mutex.hpp>
 #include <libpmemobj++/transaction.hpp>
 #include <libpmemobj++/container/vector.hpp>
 
@@ -10,8 +11,8 @@
 
 template <class V> class phistory_t {
     typedef std::pair<int, V> entry_t;
-    pmem::obj::vector<std::pair<int, V>> log;
-    std::mutex tx_mutex;
+    pmem::obj::vector<entry_t> log;
+    pmem::obj::mutex tx_mutex;
 
 public:
     inline static const int marker = std::numeric_limits<V>::min();
@@ -20,10 +21,9 @@ public:
 
     void insert(int t, const V &v) {
         auto pool = pmem::obj::pool_by_vptr(this);
-        std::lock_guard<std::mutex> lock(tx_mutex);
         pmem::obj::transaction::run(pool, [&] {
             log.emplace_back(t, v);
-        });
+        }, tx_mutex);
     }
 
     void remove(int t) {
