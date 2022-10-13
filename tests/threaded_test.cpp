@@ -11,6 +11,7 @@
 #include "skiplist.hpp"
 #include "lockedmap.hpp"
 #include "sqlite_wrapper.hpp"
+#include "rocksdb_wrapper.hpp"
 
 #define __DEBUG
 #include "debug.hpp"
@@ -152,6 +153,9 @@ void run_tests(const std::string &approach, bool initial, int N, int t, const st
     } else if (approach == "sqlite_wrapper_t") {
         sqlite_wrapper_t map(db, t, shared);
         run_persistent_approach(map, initial, N, t);
+    } else if (approach == "rocksdb_wrapper_t") {
+	rocksdb_wrapper_t<int, int> map(db);
+	run_persistent_approach(map, initial, N, t);
     } else
         ERROR("no valid approach selected");
 }

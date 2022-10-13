@@ -1,7 +1,8 @@
 FLAGS=-O3
-INCLUDE_PATH=-I$(HOME)/deploy/include -I../src/
-LIB_PATH=-L$(HOME)/deploy/lib64
-LIBS=-lpmemobj -lsqlite3
+INSTALL_ROOT=$(HOME)/deploy
+INCLUDE_PATH=-I$(INSTALL_ROOT)/include -I../src/
+LIB_PATH=-L$(INSTALL_ROOT)/lib -L$(INSTALL_ROOT)/lib64
+LIBS=-lpmemobj -lsqlite3 -lrocksdb
 DEFS=-D__INFO -D__BENCHMARK -D__ASSERT
 
 all: threaded_test mpi_naive mpi_opt
