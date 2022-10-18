@@ -40,7 +40,6 @@ public:
     }
 
     node_t *find_node(const K &key, node_t **preds, node_t **succs) {
-      retry:
         int level = head.next.size() - 1;
         node_t *pred = &head;
         node_t *curr = pred->next[level].load();
@@ -77,11 +76,11 @@ public:
             succ = succs[0];
             if (succ == node)
                 return true;
-            for (int level = 0; level < node->next.size(); level++)
+            for (size_t level = 0; level < node->next.size(); level++)
                 node->next[level].store(succs[level]);
             pred = preds[0];
         } while (!pred->next[0].compare_exchange_weak(succ, node));
-        int level = 1;
+        size_t level = 1;
         while (level < node->next.size()) {
             pred = preds[level];
             succ = succs[level];

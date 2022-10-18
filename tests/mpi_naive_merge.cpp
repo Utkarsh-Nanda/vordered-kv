@@ -95,7 +95,7 @@ template <class Map> void run_extract(Map &vmap, int v) {
         for (int i = 1; i < no_ranks; i++) {
             int left = 0, right = offsets[i];
             temp.clear();
-            while (left < local_snap.size() && right < offsets[i + 1]) {
+            while (left < (int)local_snap.size() && right < offsets[i + 1]) {
                 if (local_snap[left].first <= global[right]) {
                     temp.emplace_back(local_snap[left]);
                     left++;
@@ -104,7 +104,7 @@ template <class Map> void run_extract(Map &vmap, int v) {
                     right += 2;
                 }
             }
-            while (left < local_snap.size()) {
+            while (left < (int)local_snap.size()) {
                 temp.emplace_back(local_snap[left]);
                 left++;
             }
@@ -125,7 +125,6 @@ template <class Map> void run_tests(Map &map, int n) {
     create_reference(N);
     run_insert(map, N, std::thread::hardware_concurrency());
     run_find(map, N);
-    int latest = map.latest() - 1;
     for (int j = 0; j < map.latest(); j+= map.latest() / 5)
         run_extract(map, j);
 }

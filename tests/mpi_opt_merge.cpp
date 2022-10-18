@@ -97,7 +97,7 @@ template <class Map> void run_extract_naive(Map &vmap, int v) {
         for (int i = 1; i < no_ranks; i++) {
             int left = 0, right = offsets[i];
             temp.clear();
-            while (left < local_snap.size() && right < offsets[i + 1]) {
+            while (left < (int)local_snap.size() && right < offsets[i + 1]) {
                 if (local_snap[left].first <= global[right]) {
                     temp.emplace_back(local_snap[left]);
                     left++;
@@ -106,7 +106,7 @@ template <class Map> void run_extract_naive(Map &vmap, int v) {
                     right += 2;
                 }
             }
-            while (left < local_snap.size()) {
+            while (left < (int)local_snap.size()) {
                 temp.emplace_back(local_snap[left]);
                 left++;
             }
@@ -118,7 +118,7 @@ template <class Map> void run_extract_naive(Map &vmap, int v) {
         }
         delete []global;
         TIMER_STOP(t_snap, "collective extract, finished merging " << local_snap.size() << " KV pairs");
-        for (int i = 1; i < local_snap.size(); i++)
+        for (size_t i = 1; i < local_snap.size(); i++)
             if (local_snap[i].first < local_snap[i - 1].first)
                 FATAL("result is not sorted, violation detected at index " << i);
     }
@@ -168,7 +168,7 @@ template <class Map> void run_extract_heap(Map &vmap, int v) {
                 queue.emplace(i);
         }
         TIMER_STOP(t_snap, "collective extract, finished merging " << local_snap.size() << " KV pairs");
-        for (int i = 1; i < local_snap.size(); i++)
+        for (size_t i = 1; i < local_snap.size(); i++)
             if (local_snap[i].first < local_snap[i - 1].first)
                 FATAL("result is not sorted, violation detected at index " << i);
     }
@@ -215,7 +215,6 @@ void parallel_merge(const result_t &a, const result_t &b, result_t &c, int t) {
 }
 
 template <class Map> void run_extract_doubling(Map &vmap, int v) {
-    int sizes[no_ranks];
     int query;
 
     TIMER_START(t_snap);
@@ -243,7 +242,7 @@ template <class Map> void run_extract_doubling(Map &vmap, int v) {
     }
     if (rank == 0)
         TIMER_STOP(t_snap, "collective extract, finished merging " << left.size() << " KV pairs");
-    for (int i = 1; i < left.size(); i++)
+    for (size_t i = 1; i < left.size(); i++)
         if (left[i].first < left[i - 1].first)
             FATAL("result is not sorted, violation detected at index " << i);
 }
@@ -253,7 +252,6 @@ template <class Map> void run_tests(Map &map, int n) {
     create_reference(N);
     run_insert(map, N, std::thread::hardware_concurrency());
     run_find(map, N);
-    int latest = map.latest() - 1;
     for (int j = 0; j < map.latest(); j+= map.latest() / 5) {
         run_extract_naive(map, j);
         run_extract_heap(map, j);

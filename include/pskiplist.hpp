@@ -2,9 +2,10 @@
 #define __PERSISTENT_SKIP_LIST
 
 #include <atomic>
-#include <mutex>
-#include <strings.h>
+#include <thread>
+#include <type_traits>
 #include <unistd.h>
+#include <omp.h>
 
 #include "key_chain.hpp"
 #include "phistory.hpp"
@@ -18,7 +19,9 @@ template <typename K, typename V> class pskiplist_t {
 
     typedef phistory_t<V> log_t;
     typedef pmem::obj::persistent_ptr<log_t> plog_t;
-    typedef key_chain_t<std::pair<K, plog_t>, BLOCK_SIZE> keymap_t;
+    typedef typename std::conditional<std::is_same<K, std::string>::value, pmem::obj::string, K>::type PK;
+    typedef std::pair<PK, plog_t> entry_t;
+    typedef key_chain_t<entry_t, BLOCK_SIZE> keymap_t;
     typedef pmem::obj::persistent_ptr<keymap_t> pkeymap_t;
 
     struct root_t {
@@ -33,21 +36,19 @@ template <typename K, typename V> class pskiplist_t {
 
         node_t(const K &k, int levels = MAX_LEVEL) : key(k), next(levels) { }
     };
-
     node_t head, tail;
     std::atomic<int> version{0};
     pmem::obj::pool<root_t> pool;
-    std::mutex persist_mutex;
 
 public:
-    pskiplist_t(const std::string &db) : head(std::numeric_limits<K>::min()), tail(std::numeric_limits<K>::max()) {
+    pskiplist_t(const std::string &db) : head(log_t::low_marker), tail(log_t::high_marker) {
         for (int j = 0; j < MAX_LEVEL; j++)
             head.next[j].store(&tail);
         if (access(db.c_str(), F_OK) != 0) {
             pool = pmem::obj::pool<root_t>::create(db, "skiplist_pool", 1 << 30);
-            pmem::obj::transaction::run(pool, [&] {
-                pool.root()->keymap = pmem::obj::make_persistent<keymap_t>();
-            });
+	    pmem::obj::transaction::run(pool, [&] {
+		pool.root()->keymap = pmem::obj::make_persistent<keymap_t>();
+	    });
             DBG("Created a new pskip_list pool, path = " << db);
         } else {
             pool = pmem::obj::pool<root_t>::open(db, "skiplist_pool");
@@ -61,12 +62,12 @@ public:
                 int block_id = 0;
                 while (head) {
                     if (block_id % thread_no == omp_get_thread_num()) {
-                        for (int i = 0; i < BLOCK_SIZE; i++) {
+                        for (size_t i = 0; i < BLOCK_SIZE; i++) {
                             plog_t log = head->block[i].second;
                             if (log) {
                                 if (log->get_latest() > version)
                                     version.store(log->get_latest());
-                                insert(head->block[i].first, V(), log);
+				insert(log_t::get_volatile(head->block[i].first), V(), log);
                                 count++;
                             }
                         }
@@ -89,9 +90,9 @@ public:
     }
 
     node_t *find_node(const K &key, node_t **preds, node_t **succs) {
-      retry:
         int level = head.next.size() - 1;
         node_t *pred = &head;
+
         node_t *curr = pred->next[level].load();
         while (true) {
             node_t *succ = curr->next[level].load();
@@ -117,11 +118,10 @@ public:
             if (found) {
                 if (node) {
                     // somebody else was faster at inserting the same key
-                    if (node->history != plog) {
-                        pmem::obj::transaction::run(pool, [&] {
-                            pmem::obj::delete_persistent<log_t>(node->history);
-                        });
-                    }
+                    if (node->history != plog)
+			pmem::obj::transaction::run(pool, [&] {
+			    pmem::obj::delete_persistent<log_t>(node->history);
+			});
                     delete node;
                 }
                 node = found;
@@ -131,16 +131,16 @@ public:
             }
             if (plog == NULL) {
                 if (node->history == NULL)
-                    pmem::obj::transaction::run(pool, [&] {
-                        node->history = pmem::obj::make_persistent<log_t>();
-                    });
+		    pmem::obj::transaction::run(pool, [&] {
+			node->history = pmem::obj::make_persistent<log_t>();
+		    });
                 node->history->insert(++version, value);
             } else
                 node->history = plog;
             succ = succs[0];
             if (succ == node)
                 return true;
-            for (int level = 0; level < node->next.size(); level++)
+            for (size_t level = 0; level < node->next.size(); level++)
                 node->next[level].store(succs[level]);
             pred = preds[0];
             if (pred->next[0].compare_exchange_weak(succ, node)) {
@@ -149,7 +149,7 @@ public:
                 break;
             }
         }
-        int level = 1;
+        size_t level = 1;
         while (level < node->next.size()) {
             pred = preds[level];
             succ = succs[level];
@@ -175,7 +175,7 @@ public:
         node_t *preds[MAX_LEVEL], *succs[MAX_LEVEL];
         node_t *node = find_node(key, preds, succs);
         if (node == NULL)
-            return log_t::marker;
+            return log_t::low_marker;
         else
             return node->history->find(v);
     }
@@ -185,7 +185,7 @@ public:
         node_t *curr = head.next[0].load();
         while (curr != &tail) {
             auto p = std::make_pair(curr->key, curr->history->find(v));
-            if (p.second != log_t::marker)
+            if (p.second != log_t::low_marker)
                 result.push_back(p);
             curr = curr->next[0].load();
         }

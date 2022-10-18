@@ -20,44 +20,43 @@ template <class T, size_t N> class key_chain_t {
     plink_t head, tail;
     pmem::obj::p<size_t> no_blocks;
     std::mutex append_lock;
-    size_t pending;
+    size_t pending = 0;
     pmem::obj::pool_base pool;
 
 public:
     key_chain_t() {
         pool = pmem::obj::pool_by_vptr(this);
-        if (head == NULL) {
+	std::scoped_lock<std::mutex> lock(append_lock);
+        if (head == NULL)
             pmem::obj::transaction::run(pool, [&] {
                 head = pmem::obj::make_persistent<link_t>();
                 tail = head;
                 no_blocks = 1;
             });
-            pending = 0;
-        } else {
-            for (pending = 0; pending < N; pending++)
-                if (tail->block[pending] == T())
-                    break;
-        }
+        else
+            while (pending < N && tail->block[pending] == T())
+		pending++;
     }
     template<class... Args > void append(Args&&... args) {
         plink_t link;
         size_t slot;
-        {
-            std::lock_guard<std::mutex> lock(append_lock);
-            if (pending == N) {
-                pmem::obj::transaction::run(pool, [&] {
-                    plink_t extra = pmem::obj::make_persistent<link_t>();
-                    tail->next = extra;
-                    tail = extra;
-                    no_blocks++;
-                });
-                pending = 0;
-            }
-            link = tail;
-            slot = pending++;
-        }
+	std::unique_lock<std::mutex> lock(append_lock);
+	if (pending == N) {
+	    pmem::obj::transaction::run(pool, [&] {
+		plink_t extra = pmem::obj::make_persistent<link_t>();
+		tail->next = extra;
+		tail = extra;
+		no_blocks++;
+	    });
+	    pending = 0;
+	}
+	link = tail;
+	slot = pending++;
+	lock.unlock();
         pmem::obj::transaction::run(pool, [&] {
-            link->block[slot] = T(std::forward<Args>(args)...);
+	    T* pslot = &link->block[slot];
+	    pslot->~T();
+	    new (pslot) T(std::forward<Args>(args)...);
         });
     }
     size_t size() {

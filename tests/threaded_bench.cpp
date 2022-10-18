@@ -1,5 +1,3 @@
-#include <omp.h>
-
 #include <vector>
 #include <map>
 #include <thread>
@@ -85,7 +83,7 @@ template <class Map> void run_extract_find(Map &vmap, int n, int r, int t) {
         for (int j = 0; j < n; j++) {
             int i = rng() % n;
             int v = rng() % r;
-            if (vmap.find(vmap.latest() - v, ref_vals[i].first) != phistory_t<int>::marker)
+            if (vmap.find(vmap.latest() - v, ref_vals[i].first) != phistory_t<int>::low_marker)
                 found++;
         }
     }

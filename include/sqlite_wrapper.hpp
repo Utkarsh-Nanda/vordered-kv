@@ -27,9 +27,9 @@ class sqlite_wrapper_t {
             *find_stmt = NULL, *snap_stmt = NULL, *item_stmt = NULL;
         sqlite3 *LocalDB = NULL;
     };
+    std::string db_file;
     std::vector<thread_state_t> handle;
     std::atomic<int> version{0};
-    std::string db_file;
     sqlite3 *MainDB;
     bool shared;
 
@@ -57,7 +57,7 @@ public:
         DBG("Initialization complete, latest version = " << version);
     }
     ~sqlite_wrapper_t() {
-        for (int i = 0; i < handle.size(); i++) {
+        for (size_t i = 0; i < handle.size(); i++) {
             sqlite3_finalize(handle[i].insert_stmt);
             sqlite3_finalize(handle[i].find_stmt);
             sqlite3_finalize(handle[i].snap_stmt);
