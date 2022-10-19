@@ -25,7 +25,7 @@ public:
 
     static V get_volatile(const PV &v) {
 	if constexpr(std::is_same<V, std::string>::value)
-	    return std::string(v.c_str());
+	    return std::string(v.data(), v.data() + v.size());
 	else
 	    return v;
     }
@@ -42,7 +42,7 @@ public:
     }
 
     V find(int t) {
-        int left = 0, right = log.size() - 1;
+        int left = 0, right = size() - 1;
         while (left <= right) {
             int middle = (left + right) / 2;
             if (t < log[middle].first)
@@ -56,15 +56,16 @@ public:
     }
 
     void copy_to(std::vector<std::pair<int, V>> &result) {
-        for (size_t i = 0; i < log.size(); i++)
+        for (size_t i = 0; i < size(); i++)
             result.emplace_back(log[i]);
     }
 
     int get_latest() {
-        return log.size() > 0 ? log.back().first : -1;
+        return size() > 0 ? log.back().first : -1;
     }
 
     size_t size() {
+	std::scoped_lock<pmem::obj::mutex> lock(tx_mutex);
         return log.size();
     }
 };

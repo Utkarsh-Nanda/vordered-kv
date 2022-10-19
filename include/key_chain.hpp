@@ -19,14 +19,14 @@ template <class T, size_t N> class key_chain_t {
 
     plink_t head, tail;
     pmem::obj::p<size_t> no_blocks;
-    std::mutex append_lock;
-    size_t pending = 0;
+    pmem::obj::mutex tx_mutex;
     pmem::obj::pool_base pool;
+    size_t pending = 0;
 
 public:
     key_chain_t() {
         pool = pmem::obj::pool_by_vptr(this);
-	std::scoped_lock<std::mutex> lock(append_lock);
+	std::scoped_lock<pmem::obj::mutex> lock(tx_mutex);
         if (head == NULL)
             pmem::obj::transaction::run(pool, [&] {
                 head = pmem::obj::make_persistent<link_t>();
@@ -40,7 +40,7 @@ public:
     template<class... Args > void append(Args&&... args) {
         plink_t link;
         size_t slot;
-	std::unique_lock<std::mutex> lock(append_lock);
+	std::unique_lock<pmem::obj::mutex> lock(tx_mutex);
 	if (pending == N) {
 	    pmem::obj::transaction::run(pool, [&] {
 		plink_t extra = pmem::obj::make_persistent<link_t>();
@@ -60,6 +60,7 @@ public:
         });
     }
     size_t size() {
+	std::scoped_lock<pmem::obj::mutex> lock(tx_mutex);
         return N * (no_blocks - 1) + pending;
     }
     plink_t get_head() {
