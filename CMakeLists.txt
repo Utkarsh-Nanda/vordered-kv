@@ -2,8 +2,9 @@ cmake_minimum_required (VERSION 3.10)
 project (DSTATES)
 
 ##### Global settings
+include(GNUInstallDirs)
 add_definitions(-O3 -g -Wall -D__BENCHMARK -D__ASSERT -D__INFO)
-list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+list(APPEND CMAKE_MODULE_PATH "${DSTATES_SOURCE_DIR}/cmake")
 set(CMAKE_CXX_STANDARD 17)
 
 # OpenMP needed for multi-threaded restart
@@ -23,4 +24,5 @@ find_package(RocksDB)
 
 # -----------------------------------------------------------------------------------
 include_directories(${DSTATES_SOURCE_DIR}/include)
-add_subdirectory (tests)
+add_subdirectory(include)
+add_subdirectory(tests)

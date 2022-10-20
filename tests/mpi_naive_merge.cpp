@@ -5,13 +5,13 @@
 #include <random>
 #include <thread>
 
-#include "skiplist.hpp"
-#include "pskiplist.hpp"
-#include "lockedmap.hpp"
-#include "sqlite_wrapper.hpp"
+#include "dstates/skiplist.hpp"
+#include "dstates/pskiplist.hpp"
+#include "dstates/lockedmap.hpp"
+#include "dstates/sqlite_wrapper.hpp"
 
 #define __DEBUG
-#include "debug.hpp"
+#include "dstates/debug.hpp"
 
 typedef std::pair<int, int> intp_t;
 typedef std::vector<intp_t> result_t;

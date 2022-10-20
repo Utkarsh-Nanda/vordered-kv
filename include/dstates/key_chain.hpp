@@ -2,6 +2,7 @@
 #define __KEY_CHAIN
 
 #include <libpmemobj++/pool.hpp>
+#include <libpmemobj++/mutex.hpp>
 #include <libpmemobj++/make_persistent.hpp>
 #include <libpmemobj++/transaction.hpp>
 #include <libpmemobj++/container/array.hpp>

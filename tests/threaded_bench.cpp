@@ -5,14 +5,14 @@
 #include <random>
 #include <algorithm>
 
-#include "pskiplist.hpp"
-#include "skiplist.hpp"
-#include "lockedmap.hpp"
-#include "sqlite_wrapper.hpp"
-#include "rocksdb_wrapper.hpp"
+#include "dstates/pskiplist.hpp"
+#include "dstates/skiplist.hpp"
+#include "dstates/lockedmap.hpp"
+#include "dstates/sqlite_wrapper.hpp"
+#include "dstates/rocksdb_wrapper.hpp"
 
 #define __DEBUG
-#include "debug.hpp"
+#include "dstates/debug.hpp"
 
 typedef std::pair<int, int> intp_t;
 
