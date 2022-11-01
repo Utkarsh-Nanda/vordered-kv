@@ -3,7 +3,7 @@
 #include <iostream>
 #include <cassert>
 
-using str_vordered_kv_t = vordered_kv_t<std::string, std::string, emem_history_t<std::string, std::string>>;
+using str_vordered_kv_t = vordered_kv_t<std::string, std::string>;
 
 static const std::string marker = str_vordered_kv_t::low_marker;
 
