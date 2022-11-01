@@ -1,7 +1,8 @@
 #ifndef __LOCKEDMAP_HPP
 #define __LOCKEDMAP_HPP
 
-#include "history.hpp"
+#include "marker.hpp"
+#include "ekey_history.hpp"
 
 #include <mutex>
 #include <memory>
@@ -10,7 +11,7 @@
 #include "debug.hpp"
 
 template <class K, class V> class locked_map_t {
-    typedef history_opt_t<V> interval_t;
+    typedef ekey_history_t<V> interval_t;
     typedef std::shared_ptr<interval_t> pinterval_t;
     std::mutex m;
     std::map<K, pinterval_t> map;
@@ -31,26 +32,26 @@ public:
         it->second->insert(++version, value);
     }
     void remove(const K &key) {
-        insert(key, interval_t::marker);
+        insert(key, marker_t<V>::low_marker);
     }
     V find(int v, const K &key) {
         std::unique_lock<std::mutex> lock(m);
         auto it = map.find(key);
         if (it == map.end())
-            return interval_t::marker;
+            return marker_t<V>::low_marker;
         else
             return it->second->find(v);
     }
-    void extract_snapshot(int v, std::vector<std::pair<K,V>> &result) {
+    void get_snapshot(int v, std::vector<std::pair<K,V>> &result) {
         std::unique_lock<std::mutex> lock(m);
         result.clear();
         for (auto it = map.begin(); it != map.end(); it++) {
             V res = it->second->find(v);
-            if (res != interval_t::marker)
+            if (res != marker_t<V>::low_marker)
                 result.emplace_back(std::make_pair(it->first, res));
         }
     }
-    void extract_item(int key, std::vector<std::pair<K,V>> &result) {
+    void get_key_history(int key, std::vector<std::pair<K,V>> &result) {
         std::unique_lock<std::mutex> lock(m);
         result.clear();
         auto it = map.find(key);

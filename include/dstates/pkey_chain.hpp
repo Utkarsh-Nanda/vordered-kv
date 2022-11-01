@@ -1,5 +1,5 @@
-#ifndef __KEY_CHAIN
-#define __KEY_CHAIN
+#ifndef __PKEY_CHAIN
+#define __PKEY_CHAIN
 
 #include <libpmemobj++/pool.hpp>
 #include <libpmemobj++/mutex.hpp>
@@ -10,7 +10,7 @@
 #define __DEBUG
 #include "debug.hpp"
 
-template <class T, size_t N> class key_chain_t {
+template <class T, size_t N> class pkey_chain_t {
     struct link_t {
         typedef pmem::obj::persistent_ptr<link_t> ptr_t;
         pmem::obj::array<T, N> block;
@@ -25,7 +25,7 @@ template <class T, size_t N> class key_chain_t {
     size_t pending = 0;
 
 public:
-    key_chain_t() {
+    pkey_chain_t() {
         pool = pmem::obj::pool_by_vptr(this);
 	std::scoped_lock<pmem::obj::mutex> lock(tx_mutex);
         if (head == NULL)
@@ -38,6 +38,7 @@ public:
             while (pending < N && tail->block[pending] == T())
 		pending++;
     }
+
     template<class... Args > void append(Args&&... args) {
         plink_t link;
         size_t slot;
@@ -60,13 +61,15 @@ public:
 	    new (pslot) T(std::forward<Args>(args)...);
         });
     }
+
     size_t size() {
 	std::scoped_lock<pmem::obj::mutex> lock(tx_mutex);
         return N * (no_blocks - 1) + pending;
     }
+
     plink_t get_head() {
         return head;
     }
 };
 
-#endif //__KEY_CHAIN
+#endif //__PKEY_CHAIN

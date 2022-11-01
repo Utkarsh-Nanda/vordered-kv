@@ -5,8 +5,8 @@
 #include <random>
 #include <algorithm>
 
-#include "dstates/pskiplist.hpp"
-#include "dstates/skiplist.hpp"
+#include "dstates/marker.hpp"
+#include "dstates/vordered_kv.hpp"
 #include "dstates/lockedmap.hpp"
 #include "dstates/sqlite_wrapper.hpp"
 #include "dstates/rocksdb_wrapper.hpp"
@@ -49,7 +49,7 @@ template <class Map> void run_extract_find(Map &vmap, int n, int r, int t) {
         for (int j = 0; j < t; j++) {
             result.clear();
             int v = rng() % r;
-            vmap.extract_snapshot(vmap.latest() - v, result);
+            vmap.get_snapshot(vmap.latest() - v, result);
             extracted += result.size();
         }
     }
@@ -65,7 +65,7 @@ template <class Map> void run_extract_find(Map &vmap, int n, int r, int t) {
         for (int j = 0; j < n; j++) {
             int i = rng() % n;
             result.clear();
-            vmap.extract_item(ref_vals[i].first, result);
+            vmap.get_key_history(ref_vals[i].first, result);
             if (result.size() != 0)
                 non_empty++;
             else
@@ -83,7 +83,7 @@ template <class Map> void run_extract_find(Map &vmap, int n, int r, int t) {
         for (int j = 0; j < n; j++) {
             int i = rng() % n;
             int v = rng() % r;
-            if (vmap.find(vmap.latest() - v, ref_vals[i].first) != phistory_t<int>::low_marker)
+            if (vmap.find(vmap.latest() - v, ref_vals[i].first) != marker_t<int>::low_marker)
                 found++;
         }
     }
@@ -140,10 +140,10 @@ template <class Map> void run_persistent_approach(Map &vmap, bool initial, int N
 
 void run_tests(const std::string &approach, bool initial, int N, int t, const std::string &db, bool shared) {
     if (approach == "skiplist_t") {
-        skiplist_t<int, int> map;
+        vordered_kv_t<int, int, emem_history_t<int, int>> map(db);
         run_ephemeral_approach(map, initial, N, t);
     } else if (approach == "pskiplist_t") {
-        pskiplist_t<int, int> map(db);
+        vordered_kv_t<int, int, pmem_history_t<int, int>> map(db);
         run_persistent_approach(map, initial, N, t);
     } else if (approach == "locked_map_t") {
         locked_map_t<int, int> map;

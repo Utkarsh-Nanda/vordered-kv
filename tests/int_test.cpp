@@ -1,12 +1,14 @@
-#include "dstates/pskiplist.hpp"
+#include "dstates/vordered_kv.hpp"
 
 #include <iostream>
 #include <cassert>
 
-static const int marker = phistory_t<int>::low_marker;
+using int_vordered_kv_t = vordered_kv_t<int, int>;
+
+static const int marker = int_vordered_kv_t::low_marker;
 
 template<class T> void print_content(const T &map) {
-    std::cout << "Snapshot content: ";
+    std::cout << "Result: ";
     for (auto &e: map)
 	std::cout << "(" << e.first << ", " << e.second << ") ";
     std::cout << std::endl;
@@ -14,7 +16,7 @@ template<class T> void print_content(const T &map) {
 
 int main() {
     unlink("/dev/shm/test.db");
-    pskiplist_t<int, int> vordered_kv("/dev/shm/test.db");
+    int_vordered_kv_t vordered_kv("/dev/shm/test.db");
 
     vordered_kv.insert(1, 4);
     std::cout << "inserted (1, 4) at version 1" << std::endl;
@@ -28,9 +30,18 @@ int main() {
     std::cout << "checked (1, 4) can be found at version 1" << std::endl;
     assert(vordered_kv.find(3, 3) == marker);
     std::cout << "checked 3 cannot be found at version 3" << std::endl;
+
     std::vector<std::pair<int, int>> result;
-    vordered_kv.extract_snapshot(std::numeric_limits<int>::max(), result);
+    vordered_kv.get_snapshot(std::numeric_limits<int>::max(), result);
     print_content(result);
+    assert(result.size() == 3);
+    std::cout << "checked snapshot at version 4 has 3 entries" << std::endl;
+
+    std::vector<std::pair<int, int>> key_result;
+    vordered_kv.get_key_history(1, key_result);
+    print_content(key_result);
+    assert(key_result.size() == 2);
+    std::cout << "checked key history of 1 has 2 entries" << std::endl;
 
     return 0;
 }

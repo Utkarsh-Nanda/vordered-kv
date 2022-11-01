@@ -106,7 +106,7 @@ public:
         return ret;
     }
 
-    void extract_snapshot(int ts, vintint_t &res) {
+    void get_snapshot(int ts, vintint_t &res) {
         auto snap_stmt = handle[omp_get_thread_num()].snap_stmt;
         sqlite3_bind_int(snap_stmt, 1, ts);
         int rc = sqlite3_step(snap_stmt);
@@ -119,7 +119,7 @@ public:
         sqlite3_reset(snap_stmt);
     }
 
-    void extract_item(int key, vintint_t &res) {
+    void get_key_history(int key, vintint_t &res) {
         auto item_stmt = handle[omp_get_thread_num()].item_stmt;
         sqlite3_bind_int(item_stmt, 1, key);
         int rc = sqlite3_step(item_stmt);

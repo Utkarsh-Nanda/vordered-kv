@@ -1,6 +1,8 @@
 #ifndef __ROCKSBD_WRAPPER_HPP
 #define __ROCKSDB_WRAPPER_HPP
 
+#include "marker.hpp"
+
 #include <rocksdb/db.h>
 #include <rocksdb/convenience.h>
 
@@ -21,8 +23,6 @@ template <class K, class V> class rocksdb_wrapper_t {
     }
 
 public:
-    inline static const int marker = std::numeric_limits<V>::min();
-
     rocksdb_wrapper_t(const std::string &db_name) {
         rocksdb::Options options;
         options.create_if_missing = true;
@@ -59,7 +59,7 @@ public:
     }
 
     void remove(const K &key) {
-        insert(key, marker);
+        insert(key, marker_t<V>::low_marker);
     }
 
     V find(int v, const K &key) {
@@ -70,12 +70,12 @@ public:
         rocksdb::PinnableSlice value;
         rocksdb::Status status = db->Get(read_opts, db->DefaultColumnFamily(), get_slice(key), &value);
         if (status.IsNotFound())
-            return marker;
+            return marker_t<V>::low_marker;
         else
             return *((V *)value.data());
     }
 
-    void extract_snapshot(int v, std::vector<std::pair<K,V>> &result) {
+    void get_snapshot(int v, std::vector<std::pair<K,V>> &result) {
         result.clear();
         uint64_t tv = v;
         rocksdb::ReadOptions read_opts;
@@ -87,7 +87,7 @@ public:
         delete it;
     }
 
-    void extract_item(const K &key, std::vector<std::pair<K,V>> &result) {
+    void get_key_history(const K &key, std::vector<std::pair<K,V>> &result) {
         result.clear();
         rocksdb::ReadOptions read_opts;
         rocksdb::PinnableSlice value;

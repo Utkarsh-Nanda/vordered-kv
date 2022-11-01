@@ -1,116 +1,72 @@
-#ifndef __PERSISTENT_SKIP_LIST
-#define __PERSISTENT_SKIP_LIST
+#ifndef __VORDERED_KV
+#define __VORDERED_KV
+
+#include "marker.hpp"
+#include "emem_history.hpp"
+#include "pmem_history.hpp"
 
 #include <atomic>
-#include <thread>
-#include <type_traits>
-#include <unistd.h>
-#include <omp.h>
-
-#include "key_chain.hpp"
-#include "phistory.hpp"
+#include <functional>
 
 #define __DEBUG
 #include "debug.hpp"
 
-template <typename K, typename V> class pskiplist_t {
-    static const int MAX_LEVEL = 24;
-    static const size_t BLOCK_SIZE = 1024;
-
-    typedef phistory_t<V> log_t;
-    typedef pmem::obj::persistent_ptr<log_t> plog_t;
-    typedef typename std::conditional<std::is_same<K, std::string>::value, pmem::obj::string, K>::type PK;
-    typedef std::pair<PK, plog_t> entry_t;
-    typedef key_chain_t<entry_t, BLOCK_SIZE> keymap_t;
-    typedef pmem::obj::persistent_ptr<keymap_t> pkeymap_t;
-
-    struct root_t {
-         pkeymap_t keymap;
-    };
+template <typename K, typename V, typename P = pmem_history_t <K, V>> class vordered_kv_t {
+    static const size_t MAX_LEVEL = 24;
 
     struct node_t {
         typedef std::atomic<node_t *> next_t;
+
         K key;
-        plog_t history = NULL;
+        typename P::plog_t history{NULL};
         std::vector<next_t> next;
 
         node_t(const K &k, int levels = MAX_LEVEL) : key(k), next(levels) { }
     };
+
     node_t head, tail;
     std::atomic<int> version{0};
-    pmem::obj::pool<root_t> pool;
+    P pool;
 
 public:
-    pskiplist_t(const std::string &db) : head(log_t::low_marker), tail(log_t::high_marker) {
-        for (int j = 0; j < MAX_LEVEL; j++)
+    inline static const V low_marker = marker_t<V>::low_marker;
+    inline static const V high_marker = marker_t<V>::high_marker;
+
+    vordered_kv_t(const std::string &db) : head(low_marker), tail(high_marker), pool(db) {
+        for (size_t j = 0; j < MAX_LEVEL; j++)
             head.next[j].store(&tail);
-        if (access(db.c_str(), F_OK) != 0) {
-            pool = pmem::obj::pool<root_t>::create(db, "skiplist_pool", 1 << 30);
-	    pmem::obj::transaction::run(pool, [&] {
-		pool.root()->keymap = pmem::obj::make_persistent<keymap_t>();
-	    });
-            DBG("Created a new pskip_list pool, path = " << db);
-        } else {
-            pool = pmem::obj::pool<root_t>::open(db, "skiplist_pool");
-            DBG("Opened an existing pskip_list pool, path = " << db);
-            TIMER_START(restore_index);
-            std::atomic<int> count{0};
-            int thread_no = std::thread::hardware_concurrency();
-            #pragma omp parallel num_threads(thread_no)
-            {
-                auto head = pool.root()->keymap->get_head();
-                int block_id = 0;
-                while (head) {
-                    if (block_id % thread_no == omp_get_thread_num()) {
-                        for (size_t i = 0; i < BLOCK_SIZE; i++) {
-                            plog_t log = head->block[i].second;
-                            if (log) {
-                                if (log->get_latest() > version)
-                                    version.store(log->get_latest());
-				insert(log_t::get_volatile(head->block[i].first), V(), log);
-                                count++;
-                            }
-                        }
-                    }
-                    head = head->next;
-                    block_id++;
-                }
-            }
-            TIMER_STOP(restore_index, "restored keys = " << count);
-        }
+	using namespace std::placeholders;
+	version.store(pool.restore(std::bind(&vordered_kv_t::insert, this, _1, _2, _3)));
     }
-    ~pskiplist_t() {
+    ~vordered_kv_t() {
         node_t *curr = head.next[0].load();
         while (curr != &tail) {
             node_t *next = curr->next[0].load();
+	    pool.deallocate(curr->history, true);
             delete curr;
             curr = next;
         }
-        pool.close();
     }
 
     node_t *find_node(const K &key, node_t **preds, node_t **succs) {
         int level = head.next.size() - 1;
-        node_t *pred = &head;
-
-        node_t *curr = pred->next[level].load();
+        node_t *pred = &head, *curr;
         while (true) {
-            node_t *succ = curr->next[level].load();
-            if (curr->key < key) {
+	    curr = pred->next[level].load();
+            if (curr->key < key)
                 pred = curr;
-                curr = succ;
-            } else {
+            else {
                 preds[level] = pred;
                 succs[level] = curr;
                 if (level == 0)
                     break;
-                curr = pred->next[--level].load();
+                level--;
             }
         }
         return curr->key == key ? curr : NULL;
     }
 
-    bool insert(const K &key, const V &value, plog_t plog = NULL) {
+    bool insert(const K &key, const V &value, typename P::plog_t plog = NULL) {
         node_t *preds[MAX_LEVEL], *succs[MAX_LEVEL];
         node_t *pred, *succ, *node = NULL;
         while(true) {
@@ -119,9 +75,7 @@ public:
                 if (node) {
                     // somebody else was faster at inserting the same key
                     if (node->history != plog)
-			pmem::obj::transaction::run(pool, [&] {
-			    pmem::obj::delete_persistent<log_t>(node->history);
-			});
+			pool.deallocate(node->history);
                     delete node;
                 }
                 node = found;
@@ -131,9 +85,7 @@ public:
             }
             if (plog == NULL) {
                 if (node->history == NULL)
-		    pmem::obj::transaction::run(pool, [&] {
-			node->history = pmem::obj::make_persistent<log_t>();
-		    });
+		    node->history = pool.allocate();
                 node->history->insert(++version, value);
             } else
                 node->history = plog;
@@ -145,7 +97,7 @@ public:
             pred = preds[0];
             if (pred->next[0].compare_exchange_weak(succ, node)) {
                 if (plog == NULL)
-                    pool.root()->keymap->append(key, node->history);
+                    pool.append(key, node->history);
                 break;
             }
         }
@@ -175,23 +127,23 @@ public:
         node_t *preds[MAX_LEVEL], *succs[MAX_LEVEL];
         node_t *node = find_node(key, preds, succs);
         if (node == NULL)
-            return log_t::low_marker;
+            return low_marker;
         else
             return node->history->find(v);
     }
 
-    void extract_snapshot(int v, std::vector<std::pair<K,V>> &result) {
+    void get_snapshot(int v, std::vector<std::pair<K, V>> &result) {
         result.clear();
         node_t *curr = head.next[0].load();
         while (curr != &tail) {
             auto p = std::make_pair(curr->key, curr->history->find(v));
-            if (p.second != log_t::low_marker)
+            if (p.second != low_marker)
                 result.push_back(p);
             curr = curr->next[0].load();
         }
     }
 
-    void extract_item(const K &key, std::vector<std::pair<K,V>> &result) {
+    void get_key_history(const K &key, std::vector<std::pair<int, V>> &result) {
         result.clear();
         node_t *preds[MAX_LEVEL], *succs[MAX_LEVEL];
         node_t *node = find_node(key, preds, succs);
@@ -205,4 +157,4 @@ public:
     }
 };
 
-#endif // __SKIP_LIST
+#endif // __VORDERED_KV

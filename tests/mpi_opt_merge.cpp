@@ -6,8 +6,8 @@
 #include <random>
 #include <thread>
 
-#include "dstates/skiplist.hpp"
-#include "dstates/pskiplist.hpp"
+#include "dstates/marker.hpp"
+#include "dstates/vordered_kv.hpp"
 #include "dstates/lockedmap.hpp"
 #include "dstates/sqlite_wrapper.hpp"
 
@@ -62,7 +62,7 @@ template <class Map> void run_find(Map &vmap, int n) {
         MPI_Bcast(query, 2, MPI_INT, 0, MPI_COMM_WORLD);
         int local = vmap.find(query[1], query[0]), global;
         MPI_Reduce(&local, &global, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
-        if (global != history_opt_t<int>::marker)
+        if (global != marker_t<int>::low_marker)
             count++;
     }
     if (rank == 0)
@@ -78,7 +78,7 @@ template <class Map> void run_extract_naive(Map &vmap, int v) {
         query = v;
     MPI_Bcast(&query, 1, MPI_INT, 0, MPI_COMM_WORLD);
     result_t local_snap;
-    vmap.extract_snapshot(query, local_snap);
+    vmap.get_snapshot(query, local_snap);
     int local_size = 2 * local_snap.size();
     MPI_Gather(&local_size, 1, MPI_INT, sizes, 1, MPI_INT, 0, MPI_COMM_WORLD);
     int global_size = 0, *global = NULL;
@@ -133,7 +133,7 @@ template <class Map> void run_extract_heap(Map &vmap, int v) {
         query = v;
     MPI_Bcast(&query, 1, MPI_INT, 0, MPI_COMM_WORLD);
     result_t local_snap;
-    vmap.extract_snapshot(query, local_snap);
+    vmap.get_snapshot(query, local_snap);
     int local_size = 2 * local_snap.size();
     MPI_Gather(&local_size, 1, MPI_INT, sizes, 1, MPI_INT, 0, MPI_COMM_WORLD);
     int global_size = 0, *global = NULL;
@@ -222,7 +222,7 @@ template <class Map> void run_extract_doubling(Map &vmap, int v) {
         query = v;
     MPI_Bcast(&query, 1, MPI_INT, 0, MPI_COMM_WORLD);
     result_t left, right, temp;
-    vmap.extract_snapshot(query, left);
+    vmap.get_snapshot(query, left);
 
     int distance = 1, size = 0;
     while (distance < no_ranks) {
@@ -273,10 +273,10 @@ int main(int argc, char **argv) {
 
     DBG("Starting approach " << approach);
     if (approach == "skiplist_t") {
-        skiplist_t<int, int> map;
+        vordered_kv_t<int, int, emem_history_t<int, int>> map(db);
         run_tests(map, N);
     } else if (approach =="pskiplist_t") {
-        pskiplist_t<int, int> map(db);
+        vordered_kv_t<int, int, pmem_history_t<int, int>> map(db);
         run_tests(map, N);
     } else if (approach == "locked_map_t") {
         locked_map_t<int, int> map;
