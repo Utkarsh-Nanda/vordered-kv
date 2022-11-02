@@ -14,7 +14,7 @@ template <class T, size_t N> class pkey_chain_t {
     struct link_t {
         typedef pmem::obj::persistent_ptr<link_t> ptr_t;
         pmem::obj::array<T, N> block;
-        ptr_t next = NULL;
+        ptr_t next = nullptr;
     };
     typedef typename link_t::ptr_t plink_t;
 
@@ -28,7 +28,7 @@ public:
     pkey_chain_t() {
         pool = pmem::obj::pool_by_vptr(this);
 	std::scoped_lock<pmem::obj::mutex> lock(tx_mutex);
-        if (head == NULL)
+        if (head == nullptr)
             pmem::obj::transaction::run(pool, [&] {
                 head = pmem::obj::make_persistent<link_t>();
                 tail = head;

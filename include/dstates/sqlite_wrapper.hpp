@@ -23,9 +23,9 @@ static int get_latest_version(void *max_version, int count, char **data, char **
 
 class sqlite_wrapper_t {
     struct thread_state_t {
-        sqlite3_stmt *insert_stmt = NULL,
-            *find_stmt = NULL, *snap_stmt = NULL, *item_stmt = NULL;
-        sqlite3 *LocalDB = NULL;
+        sqlite3_stmt *insert_stmt = nullptr,
+            *find_stmt = nullptr, *snap_stmt = nullptr, *item_stmt = nullptr;
+        sqlite3 *LocalDB = nullptr;
     };
     std::string db_file;
     std::vector<thread_state_t> handle;
@@ -41,18 +41,18 @@ public:
         std::string sql =
             "create table if not exists history(ts int primary key desc, k int, v int);"
             "create index if not exists key_idx on history (k)";
-        if (sqlite3_exec(MainDB, sql.c_str(), NULL, NULL, NULL) != SQLITE_OK)
+        if (sqlite3_exec(MainDB, sql.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK)
             throw std::runtime_error("cannot create history table: " + std::string(sqlite3_errmsg(MainDB)));
-        sqlite3_exec(MainDB, "select max(ts) from history", get_latest_version, (void *)&version, NULL);
+        sqlite3_exec(MainDB, "select max(ts) from history", get_latest_version, (void *)&version, nullptr);
         for (int i = 0; i < thread_no; i++) {
             open_db(handle[i].LocalDB);
-            ASSERT(sqlite3_prepare_v2(MainDB, "insert into history values (?, ?, ?)", -1, &handle[i].insert_stmt, NULL) == SQLITE_OK);
+            ASSERT(sqlite3_prepare_v2(MainDB, "insert into history values (?, ?, ?)", -1, &handle[i].insert_stmt, nullptr) == SQLITE_OK);
             ASSERT(sqlite3_prepare_v2(handle[i].LocalDB, "select k, v, max(ts) from history where k = ? and ts <= ? group by k",
-                                      -1, &handle[i].find_stmt, NULL) == SQLITE_OK);
+                                      -1, &handle[i].find_stmt, nullptr) == SQLITE_OK);
             ASSERT(sqlite3_prepare_v2(handle[i].LocalDB, "select k, v, max(ts) from history where ts <= ? group by k order by k",
-                                      -1, &handle[i].snap_stmt, NULL) == SQLITE_OK);
+                                      -1, &handle[i].snap_stmt, nullptr) == SQLITE_OK);
             ASSERT(sqlite3_prepare_v2(handle[i].LocalDB, "select ts, v from history where k = ?",
-                                      -1, &handle[i].item_stmt, NULL) == SQLITE_OK);
+                                      -1, &handle[i].item_stmt, nullptr) == SQLITE_OK);
         }
         DBG("Initialization complete, latest version = " << version);
     }
@@ -72,11 +72,11 @@ public:
     }
 
     void open_db(sqlite3 *&DB) {
-        if (shared && sqlite3_open_v2("file::memory:?cache=shared", &DB, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI, NULL) != SQLITE_OK)
+        if (shared && sqlite3_open_v2("file::memory:?cache=shared", &DB, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI, nullptr) != SQLITE_OK)
             throw std::runtime_error("cannot open db in shared mode");
-        if (!shared && sqlite3_open_v2(db_file.c_str(), &DB, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL) != SQLITE_OK)
+        if (!shared && sqlite3_open_v2(db_file.c_str(), &DB, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr) != SQLITE_OK)
             throw std::runtime_error("cannot open db in normal mode");
-        if (sqlite3_exec(DB, "pragma journal_mode=WAL", NULL, NULL, NULL) != SQLITE_OK)
+        if (sqlite3_exec(DB, "pragma journal_mode=WAL", nullptr, nullptr, nullptr) != SQLITE_OK)
             throw std::runtime_error("cannot switch to WAL mode: " + std::string(sqlite3_errmsg(DB)));
     }
 

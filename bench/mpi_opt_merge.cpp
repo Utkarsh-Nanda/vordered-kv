@@ -81,7 +81,7 @@ template <class Map> void run_extract_naive(Map &vmap, int v) {
     vmap.get_snapshot(query, local_snap);
     int local_size = 2 * local_snap.size();
     MPI_Gather(&local_size, 1, MPI_INT, sizes, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    int global_size = 0, *global = NULL;
+    int global_size = 0, *global = nullptr;
     if (rank == 0) {
         offsets[0] = 0;
         for (int i = 1; i <= no_ranks; i++)
@@ -136,7 +136,7 @@ template <class Map> void run_extract_heap(Map &vmap, int v) {
     vmap.get_snapshot(query, local_snap);
     int local_size = 2 * local_snap.size();
     MPI_Gather(&local_size, 1, MPI_INT, sizes, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    int global_size = 0, *global = NULL;
+    int global_size = 0, *global = nullptr;
     if (rank == 0) {
         offsets[0] = 0;
         for (int i = 1; i <= no_ranks; i++)
@@ -232,9 +232,9 @@ template <class Map> void run_extract_doubling(Map &vmap, int v) {
             MPI_Send(&left[0], size, MPI_INT, rank - distance, 0, MPI_COMM_WORLD);
         }
         if (rank % (2 * distance) == 0 && rank + distance < no_ranks) {
-            MPI_Recv(&size, 1, MPI_INT, rank + distance, 0, MPI_COMM_WORLD, NULL);
+            MPI_Recv(&size, 1, MPI_INT, rank + distance, 0, MPI_COMM_WORLD, nullptr);
             right.resize(size / 2);
-            MPI_Recv(&right[0], size, MPI_INT, rank + distance, 0, MPI_COMM_WORLD, NULL);
+            MPI_Recv(&right[0], size, MPI_INT, rank + distance, 0, MPI_COMM_WORLD, nullptr);
             parallel_merge(left, right, temp, 8);
             left.swap(temp);
         }

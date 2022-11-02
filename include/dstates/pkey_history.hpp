@@ -21,6 +21,13 @@ template <class V> class pkey_history_t {
     pmem::obj::shared_mutex tx_mutex;
 
 public:
+    key_info_t info;
+
+    pkey_history_t() {
+	if (log.size() > 0)
+	    info.update(log.back().first, log.back().second == marker_t<V>::low_marker);
+    }
+
     static V get_volatile(const PV &v) {
 	if constexpr(std::is_same<V, std::string>::value)
 	    return std::string(v.data(), v.data() + v.size());
@@ -33,6 +40,7 @@ public:
         pmem::obj::transaction::run(pool, [&] {
 	    log.emplace_back(t, v);
         }, tx_mutex);
+	info.update(t, v == marker_t<V>::low_marker);
     }
 
     void remove(int t) {
@@ -59,11 +67,6 @@ public:
 	int log_size = log.size();
         for (int i = 0; i < log_size; i++)
             result.emplace_back(log[i].first, get_volatile(log[i].second));
-    }
-
-    int get_latest() {
-	std::shared_lock<pmem::obj::shared_mutex> read_lock(tx_mutex);
-        return log.size() > 0 ? log.back().first : -1;
     }
 
     size_t size() {

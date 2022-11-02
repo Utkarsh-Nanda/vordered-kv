@@ -61,8 +61,10 @@ public:
 		    for (size_t i = 0; i < BLOCK_SIZE; i++) {
 			plog_t log = head->block[i].second;
 			if (log) {
-			    if (log->get_latest() > version)
-				version.store(log->get_latest());
+			    int prev, curr = log->info.latest_version();
+			    do {
+				prev = version.load();
+			    } while (prev < curr && !version.compare_exchange_weak(prev, curr));
 			    inserter(log_t::get_volatile(head->block[i].first), V(), log);
 			    count++;
 			}

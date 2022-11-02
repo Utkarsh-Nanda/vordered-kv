@@ -80,7 +80,7 @@ template <class Map> void run_extract(Map &vmap, int v) {
     vmap.get_snapshot(query, local_snap);
     int local_size = 2 * local_snap.size();
     MPI_Gather(&local_size, 1, MPI_INT, sizes, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    int global_size = 0, *global = NULL;
+    int global_size = 0, *global = nullptr;
     if (rank == 0) {
         offsets[0] = 0;
         for (int i = 1; i <= no_ranks; i++)

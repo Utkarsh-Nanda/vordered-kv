@@ -2,6 +2,7 @@
 #define __EKEY_HISTORY_T
 
 #include "marker.hpp"
+#include "key_info.hpp"
 
 #include <atomic>
 #include <stdexcept>
@@ -12,16 +13,18 @@
 
 template <class V> class ekey_history_t {
     static const size_t HISTORY_SIZE = 128;
+
     struct entry_t {
         int ts;
         V val;
         bool marked = false;
     };
-
     std::vector<entry_t> history{HISTORY_SIZE};
     std::atomic<int> tail{0}, pending{0};
 
 public:
+    key_info_t info;
+
     void insert(int t, const V &v) {
         int slot = pending++;
         if (slot == HISTORY_SIZE)
@@ -29,6 +32,7 @@ public:
         history[slot].ts = t;
         history[slot].val = v;
         history[slot].marked = true;
+	info.update(t, v == marker_t<V>::low_marker);
     }
 
     void remove(int t) {

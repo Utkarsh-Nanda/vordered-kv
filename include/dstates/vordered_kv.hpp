@@ -12,16 +12,16 @@
 #include "debug.hpp"
 
 template <typename K, typename V, typename P = pmem_history_t <K, V>> class vordered_kv_t {
-    static const size_t MAX_LEVEL = 24;
+    static const int MAX_LEVEL = 24;
 
     struct node_t {
         typedef std::atomic<node_t *> next_t;
 
         K key;
-        typename P::plog_t history{NULL};
-        std::vector<next_t> next;
+        typename P::plog_t history{nullptr};
+        std::vector<next_t> next, shortcut;
 
-        node_t(const K &k, int levels = MAX_LEVEL) : key(k), next(levels) { }
+        node_t(const K &k, int levels = MAX_LEVEL) : key(k), next(levels), shortcut(levels) { }
     };
 
     node_t head, tail;
@@ -33,8 +33,8 @@ public:
     inline static const V high_marker = marker_t<V>::high_marker;
 
     vordered_kv_t(const std::string &db) : head(low_marker), tail(high_marker), pool(db) {
-        for (size_t j = 0; j < MAX_LEVEL; j++)
-            head.next[j].store(&tail);
+        for (int i = 0; i < MAX_LEVEL; i++)
+            head.next[i].store(&tail);
 	using namespace std::placeholders;
 	version.store(pool.restore(std::bind(&vordered_kv_t::insert, this, _1, _2, _3)));
     }
@@ -51,24 +51,50 @@ public:
     node_t *find_node(const K &key, node_t **preds, node_t **succs) {
         int level = head.next.size() - 1;
         node_t *pred = &head, *curr;
+
         while (true) {
 	    curr = pred->next[level].load();
-            if (curr->key < key)
+            if (curr->key < key) {
                 pred = curr;
-            else {
-                preds[level] = pred;
-                succs[level] = curr;
-                if (level == 0)
-                    break;
-                level--;
-            }
+		continue;
+	    }
+	    preds[level] = pred;
+	    succs[level] = curr;
+	    if (level == 0)
+		break;
+	    level--;
         }
-        return curr->key == key ? curr : NULL;
+        return curr->key == key ? curr : nullptr;
     }
 
-    bool insert(const K &key, const V &value, typename P::plog_t plog = NULL) {
+    node_t *find_node_with_shortcuts(const K &key) {
+	int level = head.next.size() - 1;
+        node_t *pred = &head, *curr, *valid_pred = pred, *scut = nullptr;
+
+        while (true) {
+	    curr = pred->next[level].load();
+	    if (curr->key < key) {
+		if (valid_pred == pred) {
+		    scut = valid_pred->shortcut[level].load();
+		    if (scut != nullptr && scut->key > curr->key && scut->key < key)
+			curr = scut;
+		} else if (!curr->history->info.latest_removed()) {
+		    valid_pred->shortcut[level].store(curr);
+		    valid_pred = curr;
+		}
+		pred = curr;
+		continue;
+	    }
+	    if (level == 0)
+		break;
+	    level--;
+	}
+	return curr->key == key ? curr : nullptr;
+    }
+
+    bool insert(const K &key, const V &value, typename P::plog_t plog = nullptr) {
         node_t *preds[MAX_LEVEL], *succs[MAX_LEVEL];
-        node_t *pred, *succ, *node = NULL;
+        node_t *pred, *succ, *node = nullptr;
         while(true) {
             node_t *found = find_node(key, preds, succs);
             if (found) {
@@ -79,12 +105,12 @@ public:
                     delete node;
                 }
                 node = found;
-            } else if (node == NULL) {
+            } else if (node == nullptr) {
                 int levels = ffs(rand() | (1 << (MAX_LEVEL - 1)));
                 node = new node_t(key, levels);
             }
-            if (plog == NULL) {
-                if (node->history == NULL)
+            if (plog == nullptr) {
+                if (node->history == nullptr)
 		    node->history = pool.allocate();
                 node->history->insert(++version, value);
             } else
@@ -96,7 +122,7 @@ public:
                 node->next[level].store(succs[level]);
             pred = preds[0];
             if (pred->next[0].compare_exchange_weak(succ, node)) {
-                if (plog == NULL)
+                if (plog == nullptr)
                     pool.append(key, node->history);
                 break;
             }
@@ -117,16 +143,15 @@ public:
     bool remove(const K &key) {
         node_t *preds[MAX_LEVEL], *succs[MAX_LEVEL];
         node_t *node = find_node(key, preds, succs);
-        if (node == NULL)
+        if (node == nullptr)
             return false;
         node->history->remove(++version);
         return true;
     }
 
     V find(int v, const K &key) {
-        node_t *preds[MAX_LEVEL], *succs[MAX_LEVEL];
-        node_t *node = find_node(key, preds, succs);
-        if (node == NULL)
+        node_t *node = find_node_with_shortcuts(key);
+        if (node == nullptr)
             return low_marker;
         else
             return node->history->find(v);
@@ -145,9 +170,8 @@ public:
 
     void get_key_history(const K &key, std::vector<std::pair<int, V>> &result) {
         result.clear();
-        node_t *preds[MAX_LEVEL], *succs[MAX_LEVEL];
-        node_t *node = find_node(key, preds, succs);
-        if (node == NULL)
+        node_t *node = find_node_with_shortcuts(key);
+        if (node == nullptr)
             return;
         node->history->copy_to(result);
     }
