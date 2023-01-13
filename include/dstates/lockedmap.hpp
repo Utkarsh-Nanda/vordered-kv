@@ -4,6 +4,7 @@
 #include "marker.hpp"
 #include "ekey_history.hpp"
 
+#include <map>
 #include <mutex>
 #include <memory>
 
