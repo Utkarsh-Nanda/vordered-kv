@@ -7,9 +7,6 @@
 #include <libpmemobj++/transaction.hpp>
 #include <libpmemobj++/container/array.hpp>
 
-#define __DEBUG
-#include "debug.hpp"
-
 template <class T, size_t N> class pkey_chain_t {
     struct link_t {
         typedef pmem::obj::persistent_ptr<link_t> ptr_t;

@@ -8,9 +8,6 @@
 #include <mutex>
 #include <memory>
 
-#define __DEBUG
-#include "debug.hpp"
-
 template <class K, class V> class locked_map_t {
     typedef ekey_history_t<V> interval_t;
     typedef std::shared_ptr<interval_t> pinterval_t;

@@ -1,11 +1,15 @@
 #include "dstates/vordered_kv.hpp"
+//#include "dstates/rocksdb_wrapper.hpp"
+#include "dstates/marker.hpp"
 
 #include <iostream>
 #include <cassert>
+#include <filesystem>
 
 using int_vordered_kv_t = vordered_kv_t<int, int>;
+//using int_vordered_kv_t = rocksdb_wrapper_t<int, int>;
 
-static const int marker = int_vordered_kv_t::low_marker;
+static const int marker = marker_t<int>::low_marker;
 
 template<class T> void print_content(const T &map) {
     std::cout << "Result: ";
@@ -15,8 +19,9 @@ template<class T> void print_content(const T &map) {
 }
 
 int main() {
-    unlink("/dev/shm/test.db");
-    int_vordered_kv_t vordered_kv("/dev/shm/test.db");
+    std::string db = "/dev/shm/test.db";
+    std::filesystem::remove_all(db);
+    int_vordered_kv_t vordered_kv(db);
 
     vordered_kv.insert(1, 4);
     std::cout << "inserted (1, 4) at version 1" << std::endl;

@@ -8,9 +8,6 @@
 #include <stdexcept>
 #include <vector>
 
-#define __DEBUG
-#include "debug.hpp"
-
 template <class V> class ekey_history_t {
     static const size_t HISTORY_SIZE = 128;
 

@@ -8,10 +8,7 @@
 #include <atomic>
 #include <functional>
 
-#define __DEBUG
-#include "debug.hpp"
-
-template <typename K, typename V, typename P = pmem_history_t <K, V>> class vordered_kv_t {
+template <typename K, typename V, typename P = pmem_history_t <K, V>, bool use_shortcuts = true> class vordered_kv_t {
     static const int MAX_LEVEL = 24;
 
     struct node_t {
@@ -27,6 +24,8 @@ template <typename K, typename V, typename P = pmem_history_t <K, V>> class vord
     node_t head, tail;
     std::atomic<int> version{0};
     P pool;
+    unsigned int rand_state = 0x123;
+    std::mutex rand_mutex;
 
 public:
     inline static const V low_marker = marker_t<V>::low_marker;
@@ -48,13 +47,42 @@ public:
         }
     }
 
-    node_t *find_node(const K &key, node_t **preds, node_t **succs) {
+    void scrub() {
+	for (int level = 0; level < MAX_LEVEL; level++) {
+	    node_t *valid_pred = &head, *curr = valid_pred->next[level];
+	    while (curr != &tail) {
+		bool curr_removed = curr->history->info.latest_removed();
+		if (!curr_removed) {
+		    valid_pred->shortcut[level].store(curr);
+		    valid_pred = curr;
+		}
+		curr = curr->next[level];
+	    }
+	}
+    }
+
+    node_t *find_node(const K &key, node_t **preds, node_t **succs, bool adjustment = false) {
         int level = head.next.size() - 1;
-        node_t *pred = &head, *curr;
+        node_t *pred = &head, *valid_pred = pred, *curr;
+	bool pred_removed = false;
 
         while (true) {
 	    curr = pred->next[level].load();
             if (curr->key < key) {
+		if constexpr(use_shortcuts) {
+		    node_t *scut = valid_pred->shortcut[level].load();
+		    if (scut != nullptr && scut->key > curr->key && scut->key < key)
+			curr = scut;
+		    if (adjustment) {
+			bool curr_removed = curr->history->info.latest_removed();
+			if (!curr_removed) {
+			    if (pred_removed && curr != scut)
+				valid_pred->shortcut[level].store(curr);
+			    valid_pred = curr;
+			}
+			pred_removed = curr_removed;
+		    }
+		}
                 pred = curr;
 		continue;
 	    }
@@ -64,32 +92,8 @@ public:
 		break;
 	    level--;
         }
-        return curr->key == key ? curr : nullptr;
-    }
-
-    node_t *find_node_with_shortcuts(const K &key) {
-	int level = head.next.size() - 1;
-        node_t *pred = &head, *curr, *valid_pred = pred, *scut = nullptr;
-
-        while (true) {
-	    curr = pred->next[level].load();
-	    if (curr->key < key) {
-		if (valid_pred == pred) {
-		    scut = valid_pred->shortcut[level].load();
-		    if (scut != nullptr && scut->key > curr->key && scut->key < key)
-			curr = scut;
-		} else if (!curr->history->info.latest_removed()) {
-		    valid_pred->shortcut[level].store(curr);
-		    valid_pred = curr;
-		}
-		pred = curr;
-		continue;
-	    }
-	    if (level == 0)
-		break;
-	    level--;
-	}
-	return curr->key == key ? curr : nullptr;
+        auto ret = curr->key == key ? curr : nullptr;
+	return ret;
     }
 
     bool insert(const K &key, const V &value, typename P::plog_t plog = nullptr) {
@@ -106,7 +110,10 @@ public:
                 }
                 node = found;
             } else if (node == nullptr) {
-                int levels = ffs(rand() | (1 << (MAX_LEVEL - 1)));
+		std::unique_lock<std::mutex> lock(rand_mutex);
+		int rand_int = rand_r(&rand_state);
+		lock.unlock();
+                int levels = ffs(rand_int | (1 << (MAX_LEVEL - 1)));
                 node = new node_t(key, levels);
             }
             if (plog == nullptr) {
@@ -150,7 +157,8 @@ public:
     }
 
     V find(int v, const K &key) {
-        node_t *node = find_node_with_shortcuts(key);
+	node_t *preds[MAX_LEVEL], *succs[MAX_LEVEL];
+        node_t *node = find_node(key, preds, succs, false);
         if (node == nullptr)
             return low_marker;
         else
@@ -170,7 +178,8 @@ public:
 
     void get_key_history(const K &key, std::vector<std::pair<int, V>> &result) {
         result.clear();
-        node_t *node = find_node_with_shortcuts(key);
+	node_t *preds[MAX_LEVEL], *succs[MAX_LEVEL];
+        node_t *node = find_node(key, preds, succs, false);
         if (node == nullptr)
             return;
         node->history->copy_to(result);
@@ -178,6 +187,13 @@ public:
 
     int latest() {
         return version;
+    }
+
+    std::string get_stats() {
+	return "not yet implemented";
+    }
+
+    void clear_stats() {
     }
 };
 

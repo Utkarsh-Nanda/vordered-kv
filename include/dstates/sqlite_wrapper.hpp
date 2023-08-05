@@ -8,9 +8,6 @@
 #include <atomic>
 #include <thread>
 
-#define __DEBUG
-#include "debug.hpp"
-
 using namespace std::chrono_literals;
 typedef std::vector<std::pair<int,int>> vintint_t;
 

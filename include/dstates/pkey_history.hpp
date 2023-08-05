@@ -11,9 +11,6 @@
 #include <libpmemobj++/container/vector.hpp>
 #include <libpmemobj++/container/string.hpp>
 
-#define __DEBUG
-#include "debug.hpp"
-
 template <class V> class pkey_history_t {
     typedef typename std::conditional<std::is_same<V, std::string>::value, pmem::obj::string, V>::type PV;
     typedef std::pair<int, PV> entry_t;

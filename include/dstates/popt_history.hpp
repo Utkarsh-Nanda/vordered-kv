@@ -8,9 +8,6 @@
 #include <libpmemobj++/mutex.hpp>
 #include <libpmemobj++/container/array.hpp>
 
-#define __DEBUG
-#include "debug.hpp"
-
 template <class V> class popt_history_t {
     struct entry_t {
         int ts;

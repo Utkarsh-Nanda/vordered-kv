@@ -24,7 +24,7 @@ find_package(SQLite3)
 find_package(RocksDB)
 
 # -----------------------------------------------------------------------------------
-include_directories(${DSTATES_SOURCE_DIR}/include)
+include_directories(BEFORE ${DSTATES_SOURCE_DIR}/include)
 add_subdirectory(include)
 add_subdirectory(tests)
 if (BUILD_BENCHMARKS)

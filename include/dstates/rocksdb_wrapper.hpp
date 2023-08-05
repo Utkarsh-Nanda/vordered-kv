@@ -6,16 +6,23 @@
 #include <rocksdb/db.h>
 #include <rocksdb/convenience.h>
 
-#define __DEBUG
-#include "debug.hpp"
-
 template <class K, class V> class rocksdb_wrapper_t {
-    rocksdb::DB* db;
+    rocksdb::DB  *db;
     std::atomic<uint64_t> version{0};
 
     template <class T> inline rocksdb::Slice get_slice(const T &obj) {
-        return rocksdb::Slice((char *)&obj, sizeof(T));
+        if constexpr(std::is_same<T, std::string>::value)
+            return rocksdb::Slice(obj);
+        else
+            return rocksdb::Slice((char *)&obj, sizeof(T));
     }
+    template <class T, class S> inline T extract_slice(const S &slice) {
+        if constexpr(std::is_same<T, std::string>::value)
+            return slice.ToString();
+        else
+            return *((T *)slice.data());
+    }
+
     void rocksdb_assert(const rocksdb::Status &s) {
         if (s.ok())
             return;
@@ -38,7 +45,7 @@ public:
         read_opts.timestamp = &ts;
         rocksdb::Iterator* it = db->NewIterator(read_opts);
         for (it->SeekToFirst(); it->Valid(); it->Next()) {
-            size_t ts = *(size_t *)it->timestamp().data();
+            size_t ts = extract_slice<size_t>(it->timestamp());
             if (ts > version)
                 version = ts;
         }
@@ -72,7 +79,7 @@ public:
         if (status.IsNotFound())
             return marker_t<V>::low_marker;
         else
-            return *((V *)value.data());
+            return extract_slice<V>(value);
     }
 
     void get_snapshot(int v, std::vector<std::pair<K,V>> &result) {
@@ -83,23 +90,27 @@ public:
         read_opts.timestamp = &ts;
         rocksdb::Iterator* it = db->NewIterator(read_opts);
         for (it->SeekToFirst(); it->Valid(); it->Next())
-            result.emplace_back(*(K *)it->key().data(), *(V *)it->value().data());
+            result.emplace_back(extract_slice<K>(it->key()), extract_slice<V>(it->value()));
         delete it;
     }
 
-    void get_key_history(const K &key, std::vector<std::pair<K,V>> &result) {
+    void get_key_history(const K &key, std::vector<std::pair<int, V>> &result) {
         result.clear();
         rocksdb::ReadOptions read_opts;
         rocksdb::PinnableSlice value;
         rocksdb::Status status;
+        V last_val = marker_t<V>::low_marker;
+
         for (uint64_t tv = 0; tv <= version; tv++) {
             rocksdb::Slice ts = get_slice(tv);
             read_opts.timestamp = &ts;
             status = db->Get(read_opts, db->DefaultColumnFamily(), get_slice(key), &value);
             if (status.ok()) {
-                V new_val = *(V *)value.data();
-                if (result.size() == 0 || (result.size() > 0 && result.back().second != new_val))
+                V new_val = extract_slice<V>(value);
+                if (new_val != last_val) {
                     result.emplace_back(tv, new_val);
+                    last_val = new_val;
+                }
             }
             value.Reset();
         }
