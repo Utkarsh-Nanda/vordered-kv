@@ -65,7 +65,7 @@ public:
 			    do {
 				prev = version.load();
 			    } while (prev < curr && !version.compare_exchange_weak(prev, curr));
-			    inserter(log_t::get_volatile(head->block[i].first), V(), log);
+			    inserter(get_volatile(head->block[i].first), V(), log);
 			    count++;
 			}
 		    }

@@ -1,7 +1,7 @@
 #ifndef __POPT_HISTORY_T
 #define __POPT_HISTORY_T
 
-#include <iostream>
+#include "marker.hpp"
 
 #include <libpmemobj++/pool.hpp>
 #include <libpmemobj++/transaction.hpp>
@@ -9,9 +9,10 @@
 #include <libpmemobj++/container/array.hpp>
 
 template <class V> class popt_history_t {
+    typedef typename std::conditional<std::is_same<V, std::string>::value, pmem::obj::string, V>::type PV;
     struct entry_t {
         int ts;
-        V val;
+        PV val;
         bool marked = false;
     };
     static const size_t HISTORY_SIZE = 16;
@@ -22,10 +23,16 @@ template <class V> class popt_history_t {
     pmem::obj::mutex tx_mutex;
 
 public:
-    inline static const int marker = std::numeric_limits<V>::min();
+    key_info_t info;
 
     popt_history_t() {
         pool = pmem::obj::pool_by_vptr(this);
+        pmem::obj::transaction::run(pool, [&] {
+            while (history[tail].marked)
+                tail++;
+        }, tx_mutex);
+        if (tail > 0)
+            info.update(history[tail - 1].ts, history[tail - 1].val == marker_t<V>::low_marker);
     }
 
     void insert(int t, const V &v) {
@@ -40,10 +47,11 @@ public:
             history[slot].val = v;
             history[slot].marked = true;
         });
+        info.update(t, v == marker_t<V>::low_marker);
     }
 
     void remove(int t) {
-        insert(t, marker);
+        insert(t, marker_t<V>::low_marker);
     }
 
     V find(int t) {
@@ -59,22 +67,17 @@ public:
             else if (t > history[middle].ts)
                 left = middle + 1;
             else
-                return history[middle].val;
+                return get_volatile(history[middle].val);
         }
-        return (right < 0) ? marker : history[right].val;
+        return (right < 0) ? marker_t<V>::low_marker : get_volatile(history[right].val);
     }
 
     void copy_to(std::vector<std::pair<int, V>> &result) {
         int current_head = 0;
         while (history[current_head].marked) {
-            result.emplace_back(std::make_pair(history[current_head].ts, history[current_head].val));
+            result.emplace_back(std::make_pair(history[current_head].ts, get_volatile(history[current_head].val)));
             current_head++;
         }
-    }
-
-    int get_latest() {
-        int current_tail = tail;
-        return current_tail > 0 ? history[current_tail - 1].val : -1;
     }
 
     size_t size() {

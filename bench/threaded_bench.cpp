@@ -72,8 +72,6 @@ template <class Map> void run_extract_find(Map &vmap, int n, int r, int t) {
                 non_empty++;
             else
                 DBG("empty history for key: " << ref_vals[i].first);
-	    if (i % 10 == 0)
-		DBG("processed " << i << "/" << n << " queries");
         }
     }
     TIMER_STOP(t_item, "extract key history for " << n << " keys, non empty history = " << non_empty);
@@ -98,8 +96,9 @@ template <class Map> void run_insert(Map &vmap, const int n, const int t, const 
     #pragma omp parallel num_threads(t)
     {
         #pragma omp for
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < n; i++) {
             vmap.insert(ref_vals[ref_start + i].first, ref_vals[ref_start + i].second);
+        }
     }
     TIMER_STOP(t_insert, "insert " << n << " KV pairs, ref_start = " << ref_start);
 }

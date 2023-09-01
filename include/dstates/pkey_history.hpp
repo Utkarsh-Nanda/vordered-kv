@@ -25,13 +25,6 @@ public:
 	    info.update(log.back().first, log.back().second == marker_t<V>::low_marker);
     }
 
-    static V get_volatile(const PV &v) {
-	if constexpr(std::is_same<V, std::string>::value)
-	    return std::string(v.data(), v.data() + v.size());
-	else
-	    return v;
-    }
-
     void insert(int t, const V &v) {
         auto pool = pmem::obj::pool_by_vptr(this);
         pmem::obj::transaction::run(pool, [&] {
