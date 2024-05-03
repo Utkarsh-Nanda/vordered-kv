@@ -37,6 +37,7 @@ public:
 	using namespace std::placeholders;
 	version.store(pool.restore(std::bind(&vordered_kv_t::insert, this, _1, _2, _3)));
     }
+
     ~vordered_kv_t() {
         node_t *curr = head.next[0].load();
         while (curr != &tail) {
@@ -119,7 +120,7 @@ public:
             if (plog == nullptr) {
                 if (node->history == nullptr)
 		    node->history = pool.allocate();
-                node->history->insert(++version, value);
+                node->history->insert(version, value);
             } else
                 node->history = plog;
             succ = succs[0];
@@ -152,7 +153,7 @@ public:
         node_t *node = find_node(key, preds, succs);
         if (node == nullptr)
             return false;
-        node->history->remove(++version);
+        node->history->remove(version);
         return true;
     }
 
@@ -189,11 +190,15 @@ public:
         return version;
     }
 
-    std::string get_stats() {
-	return "not yet implemented";
+    int tag() {
+        return version++;
     }
 
     void clear_stats() {
+    }
+
+    const std::string get_stats() {
+        return "not yet implemented";
     }
 };
 

@@ -28,7 +28,11 @@ public:
     void insert(int t, const V &v) {
         auto pool = pmem::obj::pool_by_vptr(this);
         pmem::obj::transaction::run(pool, [&] {
-	    log.emplace_back(t, v);
+            if (log.size() > 0 && log.back().first == t) {
+                log.back().first = t;
+                log.back().second = v;
+            } else
+                log.emplace_back(t, v);
         }, tx_mutex);
 	info.update(t, v == marker_t<V>::low_marker);
     }
