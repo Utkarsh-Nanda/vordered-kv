@@ -60,8 +60,12 @@ public:
         return version;
     }
 
+    int tag() {
+        return version++;
+    }
+
     void insert(const K &key, const V &value) {
-        rocksdb::Status status = db->Put(rocksdb::WriteOptions(), get_slice(key), get_slice(++version), get_slice(value));
+        rocksdb::Status status = db->Put(rocksdb::WriteOptions(), get_slice(key), get_slice(version), get_slice(value));
         rocksdb_assert(status);
     }
 
