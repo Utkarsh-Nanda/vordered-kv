@@ -1,6 +1,3 @@
-
-
-
 #ifndef __EKEY_HISTORY_T
 #define __EKEY_HISTORY_T
 
@@ -10,6 +7,7 @@
 #include <stdexcept>
 #include <vector>
 #include <memory>
+#include <shared_mutex>
 
 template <class V>
 class ekey_history_t {
@@ -37,60 +35,51 @@ class ekey_history_t {
     std::atomic<std::shared_ptr<block_t>> tail;
     std::atomic<size_t> total_size;
 
-    // std::map<int, std::shared_ptr<block_t>> block_map;
-    // mutable std::shared_mutex block_map_mutex;
+    // Vector to store the starting timestamp and block pointer for efficient access.
+    std::vector<std::pair<int, std::shared_ptr<block_t>>> block_index;
+    mutable std::shared_mutex block_index_mutex;
+
 
 public:
     key_info_t info;
-    // when the object of type ekey_history_t is made a new block_t is formed which is pointed by the head pointer
-    // initially the tail also points to head, and total_size = 0
-    ekey_history_t() : head(std::make_shared<block_t>()), tail(head), total_size(0) {
-        // block_map[std::numeric_limits<int>::min()] = head;
-    }
 
+    ekey_history_t() : head(std::make_shared<block_t>()), tail(head), total_size(0) {
+        std::unique_lock lock(block_index_mutex);
+        block_index.emplace_back(std::numeric_limits<int>::min(), head);
+
+    }
 
     void insert(int t, const V &v) {
-    // std::cout << "Inserting a value - start.\n";
-    while (true) {
-        // std::cout << "A turn.\n";
-        auto current_tail = tail.load();
-        size_t slot = current_tail->size.fetch_add(1);
-        
-        if (slot < BLOCK_SIZE) {
-            // std::cout << "Current Block size is enough.\n";
-            current_tail->entries[slot].ts = t;
-            current_tail->entries[slot].val = v;
-            current_tail->entries[slot].marked = true; // inserted
-            // std::cout << "inserted the ts val and marked values.\n";
-            int expected_first = current_tail->first_ts.load();
-            current_tail->first_ts.compare_exchange_strong(expected_first, std::min(expected_first, t));
+        while (true) {
+            auto current_tail = tail.load();
+            size_t slot = current_tail->size.fetch_add(1);
+            
+            if (slot < BLOCK_SIZE) {
+                current_tail->entries[slot].ts = t;
+                current_tail->entries[slot].val = v;
+                current_tail->entries[slot].marked = true;
 
-            int expected_last = current_tail->last_ts.load();
-            current_tail->last_ts.compare_exchange_strong(expected_last, std::max(expected_last, t));
-            // if (current_tail->last_ts.compare_exchange_strong(expected_last, std::max(expected_last, t))) {
-                // std::unique_lock lock(block_map_mutex);
-                // block_map[t] = current_tail;
-            // }
-            // std::cout << "updated the minimum and maximum values for ts for the current block.\n";
-            total_size.fetch_add(1);
-            // std::cout << "boom.\n";
-            // info.update(t, v == marker_t<V>::low_marker);
-            // std::cout << "end of an insertion if block found.\n";
-            return;
-        } else {
-            // std::cout << "Current Block size is not enough.\n";
-            auto new_block = std::make_shared<block_t>();
-            std::shared_ptr<block_t> expected_next = nullptr;
-            if (std::atomic_compare_exchange_strong(&current_tail->next, &expected_next, new_block)) {
-                std::shared_ptr<block_t> expected_tail = current_tail;
-                tail.compare_exchange_strong(expected_tail, new_block);
+                int expected_first = current_tail->first_ts.load();
+                current_tail->first_ts.compare_exchange_strong(expected_first, std::min(expected_first, t));
 
-                // std::unique_lock lock(block_map_mutex);
-                // block_map[t] = new_block;
+                int expected_last = current_tail->last_ts.load();
+                current_tail->last_ts.compare_exchange_strong(expected_last, std::max(expected_last, t));
+
+                total_size.fetch_add(1);
+                // info.update(t, v == marker_t<V>::low_marker);
+                return;
+            } else {
+                auto new_block = std::make_shared<block_t>();
+                std::shared_ptr<block_t> expected_next = nullptr;
+                if (std::atomic_compare_exchange_strong(&current_tail->next, &expected_next, new_block)) {
+                    std::shared_ptr<block_t> expected_tail = current_tail;
+                    tail.compare_exchange_strong(expected_tail, new_block);
+
+                    std::unique_lock lock(block_index_mutex);
+                    block_index.emplace_back(t, new_block);
+                }
             }
         }
-    }
-    // std::cout << "Inserting a value ends. After the while loop\n";
     }
 
     void remove(int t) {
@@ -98,25 +87,69 @@ public:
     }
 
     V find(int t) {
-        auto current = head; // points to the head of the linked list of blocks
-        while (current) { // iterate through all the blocks
-            if ((t >= current->first_ts.load() && t <= current->last_ts.load()) || current->next == NULL) { // if t is in range for current block
-                for (size_t i = 0; i < current->size.load(); ++i) { // iterate through all entries of current block
-                    if (current->entries[i].marked && current->entries[i].ts <= t) { // if current entry is valid and less than t
-                        if (current->entries[i].ts == t) { // if exact same timestamp found
-                            return current->entries[i].val; // return value
-                        }
-                        // if this is the last entry or the first entry of next block is greater than t
-                        if (i == current->size.load() - 1 || current->entries[i + 1].ts > t) {
-                            // return the value of the just previous timestamp
-                            return current->entries[i].val;
-                        }
+
+        std::shared_ptr<block_t> target_block;
+        {
+            std::shared_lock lock(block_index_mutex);
+            
+            if (block_index.empty()) {
+                return marker_t<V>::low_marker;
+            }
+
+            int left = 0;
+            int right = block_index.size() - 1;
+
+            while (left <= right) {
+                int mid = left + (right - left) / 2;
+
+                if (block_index[mid].first <= t) {
+                    // if we have reached the last block, or the starting value of next block is > t, then this is the block
+                    if (mid == block_index.size() - 1 || block_index[mid + 1].first > t) {
+                        target_block = block_index[mid].second;
+                        break;
                     }
+                    left = mid + 1;
+                } else {
+                    right = mid - 1;
+                }
+            }   
+            // if after search target_block is not set
+            if (!target_block) {
+                // right points to the value just less than t
+                if (right >= 0) {
+                    target_block = block_index[right].second;
+                } else {
+                    return marker_t<V>::low_marker;
                 }
             }
-            current = current->next;
         }
-        // if the timestamp didn't belong in between any block, return low marker value.
+
+        size_t left = 0, right = target_block->size.load() - 1;
+        // std::cout << "Block size : " << right << "\n";
+        while (left <= right) {
+            size_t middle = left + (right - left) / 2;
+            if (t < target_block->entries[middle].ts)
+                right = middle - 1;
+            else if (t > target_block->entries[middle].ts)
+                left = middle + 1;
+                // if t == middle timestamp and it is marked
+            else if (target_block->entries[middle].marked){
+                std::cout << "Value returned after finding exactly : " << target_block->entries[middle].val << "\n";
+                return target_block->entries[middle].val;
+            }
+            else
+                right = middle - 1;  // If not marked, continue searching for the previous valid entry
+        }
+
+        // If no exact match, return the most recent value before t
+        while (right >= 0) {
+            if (target_block->entries[right].marked && target_block->entries[right].ts <= t) {
+                std::cout << "Value returned after not finding a match : " << target_block->entries[right].val << "\n";
+                return target_block->entries[right].val;
+            }
+            --right;
+        }
+        std::cout << "Returning low marker : " << marker_t<V>::low_marker << "\n";
         return marker_t<V>::low_marker;
     }
     
