@@ -32,9 +32,11 @@ private:
     pool_t pool;
 
 public:
+// creates persistent memroy
     pmem_history_t(const std::string &db) {
 	if (access(db.c_str(), F_OK) != 0) {
-            pool = pmem::obj::pool<root_t>::create(db, POOL_NAME, 1 << 30);
+		// in root we have key-map
+            pool = pmem::obj::pool<root_t>::create(db, POOL_NAME, 4294967296);
 	    pmem::obj::transaction::run(pool, [&] {
 		pool.root()->keymap = pmem::obj::make_persistent<keymap_t>();
 	    });
@@ -47,7 +49,7 @@ public:
     ~pmem_history_t() {
 	pool.close();
     }
-
+	// we build the skip list out 
     int restore(std::function<bool (const K &, const V &, plog_t)> inserter) {
 	TIMER_START(restore_index);
 	std::atomic<int> count{0}, version{0};
